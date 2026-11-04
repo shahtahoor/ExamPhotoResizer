@@ -1,0 +1,67 @@
+name: Build APK from ZIP
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Find and extract project ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          ZIP_FILE="ExamPhotoResizer_Gradle_Project.zip"
+
+          if [[ ! -f "$ZIP_FILE" ]]; then
+            echo "Expected ZIP not found at repository root: $ZIP_FILE"
+            echo "Upload the project ZIP to the root of the repository."
+            exit 1
+          fi
+
+          mkdir -p extracted
+          unzip -q "$ZIP_FILE" -d extracted
+
+          PROJECT_DIR="extracted/ExamPhotoResizer"
+          if [[ ! -f "$PROJECT_DIR/settings.gradle" || ! -d "$PROJECT_DIR/app" ]]; then
+            echo "ZIP structure did not contain extracted/ExamPhotoResizer/settings.gradle and app/"
+            find extracted -maxdepth 3 -type f | head -50
+            exit 1
+          fi
+
+          # Copy project files to the workspace root, preserving the workflow and ZIP.
+          cp -a "$PROJECT_DIR/." .
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform and build tools
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Build debug APK
+        run: gradle assembleDebug
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ExamPhotoResizer-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          
